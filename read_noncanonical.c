@@ -104,6 +104,7 @@ int main(int argc, char *argv[])
     {
         // Returns after 5 chars have been input
         bytes = read(fd, buf, BUF_SIZE);
+        printf("here\n");
         if (isSet(buf)){
             printf("Set received successfully\n");
             STOP = TRUE;

@@ -11,6 +11,7 @@
 #include <termios.h>
 #include <unistd.h>
 #include <stdbool.h>
+#include <signal.h>
 #include "msg_bytes.h"
 
 // Baudrate settings are defined in <asm/termbits.h>, which is
@@ -24,10 +25,20 @@
 #define BUF_SIZE 5
 
 volatile int STOP = FALSE;
+int alarmEnabled = FALSE;
+int alarmCount = 0;
 
 //checks if the message received is the UA frame
 bool isUA (unsigned char *buf){
     return buf[0] == FLAG && buf[1] == A_RECEIVER && buf[2] == C_UA && buf[3] == (A_RECEIVER ^ C_UA) && buf[4] == FLAG; 
+}
+
+// Alarm function handler
+void alarmHandler(int signal)
+{
+    alarmEnabled = FALSE;
+    alarmCount++;
+    printf("Alarm #%d\n", alarmCount);
 }
 
 int main(int argc, char *argv[])
@@ -99,33 +110,48 @@ int main(int argc, char *argv[])
     // Create string to send
     unsigned char buf[BUF_SIZE] = {0};
 
-    //insert into the buffer
+    //insert set message into the buffer
     buf[0] = FLAG;
     buf[1] = A_SENDER;
     buf[2] = C_SET;
     buf[3] = A_SENDER ^ C_SET;
     buf[4] = FLAG;
 
-    //sends the bytes
-    int bytes = write(fd, buf, BUF_SIZE);
-    printf("%d bytes written\n", bytes);
+    //starts the alarm
+    (void)signal(SIGALRM, alarmHandler);
 
-    // Wait until all bytes have been written to the serial port
-    sleep(1);
+    int bytes = 0;
 
-    //reads the message from the receiver
-    bool stop = false;
-    while (stop == false)
+    //waits 3s for the UA message. Tries 3 times to send the message
+    while (alarmCount < 4)
     {
+        if (alarmEnabled == FALSE)
+        {
+            alarm(3); // Set alarm to be triggered in 3s
+            alarmEnabled = TRUE;
+            
+
+            //sends the set message
+            bytes = write(fd, buf, BUF_SIZE);
+            printf("%d bytes written\n", bytes);
+            // Wait until all bytes have been written to the serial port
+            sleep(1);
+
+        }
+    	
+        
         // Returns after 5 chars have been input
         bytes = read(fd, buf, BUF_SIZE);
+        
 
         //checks if the message received is the UA
         if (isUA(buf)){
             printf("UA reveived successfully\n");
-            stop = true;
+            break;
         }
     }
+
+    alarm(0);
 
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)

@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
+#include <stdbool.h>
+#include "msg_bytes.h"
 
 // Baudrate settings are defined in <asm/termbits.h>, which is
 // included by <termios.h>
@@ -19,9 +21,15 @@
 #define FALSE 0
 #define TRUE 1
 
-#define BUF_SIZE 256
+#define BUF_SIZE 5
 
 volatile int STOP = FALSE;
+
+//checks if the message received is the set frame
+bool isSet (unsigned char *buf){
+    return buf[0] == FLAG && buf[1] == A_SENDER && buf[2] == C_SET && buf[3] == (A_SENDER ^ C_SET) && buf[4] == FLAG; 
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -89,21 +97,30 @@ int main(int argc, char *argv[])
     printf("New termios structure set\n");
 
     // Loop for input
-    unsigned char buf[BUF_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
+    unsigned char buf[BUF_SIZE] = {0};
 
+    int bytes = 0;
     while (STOP == FALSE)
     {
         // Returns after 5 chars have been input
-        int bytes = read(fd, buf, BUF_SIZE);
-        buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
-
-        printf(":%s:%d\n", buf, bytes);
-        if (buf[0] == 'z')
+        bytes = read(fd, buf, BUF_SIZE);
+        if (isSet(buf)){
+            printf("Set received successfully\n");
             STOP = TRUE;
+        }
     }
 
-    // The while() cycle should be changed in order to respect the specifications
-    // of the protocol indicated in the Lab guide
+    //The UA frame message is created and send to the sender
+    //insert into the buffer
+    buf[0] = FLAG;
+    buf[1] = A_RECEIVER;
+    buf[2] = C_UA;
+    buf[3] = A_RECEIVER ^ C_UA;
+    buf[4] = FLAG;
+
+    //sends the bytes
+    bytes = write(fd, buf, BUF_SIZE);
+    printf("%d bytes written\n", bytes);
 
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)

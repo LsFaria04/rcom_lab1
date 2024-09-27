@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
+#include <stdbool.h>
+#include "msg_bytes.h"
 
 // Baudrate settings are defined in <asm/termbits.h>, which is
 // included by <termios.h>
@@ -19,9 +21,14 @@
 #define FALSE 0
 #define TRUE 1
 
-#define BUF_SIZE 256
+#define BUF_SIZE 5
 
 volatile int STOP = FALSE;
+
+//checks if the message received is the UA frame
+bool isUA (unsigned char *buf){
+    return buf[0] == FLAG && buf[1] == A_RECEIVER && buf[2] == C_UA && buf[3] == (A_RECEIVER ^ C_UA) && buf[4] == FLAG; 
+}
 
 int main(int argc, char *argv[])
 {
@@ -90,32 +97,35 @@ int main(int argc, char *argv[])
     printf("New termios structure set\n");
 
     // Create string to send
-    unsigned char buf[5] = {0};
-
-    //create set message
-    unsigned char flag = 0x7E;
-    unsigned char address = 0x03;
-    unsigned char control = 0x03;
-    unsigned char bcc1 = address ^ control;
+    unsigned char buf[BUF_SIZE] = {0};
 
     //insert into the buffer
-    buf[0] = flag;
-    buf[1] = address;
-    buf[2] = control;
-    buf[3] = bcc1;
-    buf[4] = flag;
+    buf[0] = FLAG;
+    buf[1] = A_SENDER;
+    buf[2] = C_SET;
+    buf[3] = A_SENDER ^ C_SET;
+    buf[4] = FLAG;
 
-
-    // In non-canonical mode, '\n' does not end the writing.
-    // Test this condition by placing a '\n' in the middle of the buffer.
-    // The whole buffer must be sent even with the '\n'.
-    //buf[5] = '\n';
-
-    int bytes = write(fd, buf, 5);
+    //sends the bytes
+    int bytes = write(fd, buf, BUF_SIZE);
     printf("%d bytes written\n", bytes);
 
     // Wait until all bytes have been written to the serial port
     sleep(1);
+
+    //reads the message from the receiver
+    bool stop = false;
+    while (stop == false)
+    {
+        // Returns after 5 chars have been input
+        bytes = read(fd, buf, BUF_SIZE);
+
+        //checks if the message received is the UA
+        if (isUA(buf)){
+            printf("UA reveived successfully\n");
+            stop = true;
+        }
+    }
 
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)

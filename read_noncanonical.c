@@ -25,10 +25,72 @@
 #define BUF_SIZE 5
 
 volatile int STOP = FALSE;
+static int state = Start;
+unsigned char *byte;
 
 //checks if the message received is the set frame
 bool isSet (unsigned char *buf){
     return buf[0] == FLAG && buf[1] == A_SENDER && buf[2] == C_SET && buf[3] == (A_SENDER ^ C_SET) && buf[4] == FLAG; 
+}
+
+//state machine
+void state_machine(){
+    switch (state)
+       {
+
+        case Start:
+            if(*byte == FLAG){
+                state = FLAG_RCV;
+            }
+            else{
+                state = Start;
+            }
+            break;
+
+        case FLAG_RCV:
+            if(*byte == A_SENDER){
+                state = A_RCV;
+            }
+            else if(*byte == FLAG){state = FLAG;}
+            else{
+                state = Start;
+            }
+            break;
+
+        case A_RCV:
+            if(*byte == C_SET){
+                state = C_RCV;
+            }
+            else if(*byte == FLAG){state=FLAG;}
+            else{
+                state = Start;
+            }
+            break;
+
+        case C_RCV:
+            if(*byte == (A_SENDER ^ C_SET)){
+                state = BCC_OK;
+            }  
+            else if(*byte == FLAG){state=FLAG;}
+            else
+            {
+                state = Start;
+            }
+            break;
+
+        case BCC_OK:
+            if(*byte == FLAG){
+                state = END;
+            }    
+            else{
+                state = Start;
+            }
+            break;
+
+        default:
+            state = Start;
+            break;
+        }
 }
 
 
@@ -76,7 +138,7 @@ int main(int argc, char *argv[])
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
     newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 5;  // Blocking read until 5 chars received
+    newtio.c_cc[VMIN] = 1;  // Blocking read until 1 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -96,89 +158,31 @@ int main(int argc, char *argv[])
     }
 
     printf("New termios structure set\n");
-
-    // Loop for input
-    unsigned char buf[BUF_SIZE] = {0};
-
     int bytes = 0;
-    int state = Start; 
+
+    //allocate a memory buffer to receive a byte from the transmitter
+    byte = (unsigned char*)malloc(sizeof(unsigned char));
+    state = Start;  //first state is start
     while (STOP == FALSE)
     {
-        // Returns after 5 chars have been input
-        bytes = read(fd, buf, BUF_SIZE);
-        
-        
-        
-        //printf("here\n");
-        if (isSet(buf)){
-            printf("Set received successfully\n");
+        *byte = 0; 
+        bytes = read(fd, byte, 1); //read a byte from the serial port
+        state_machine(); //run the state machine with the new byte
+
+        if(state == END){
+
+            printf("Set frame received successfully\n");
             STOP = TRUE;
-        }
-       if(state==END){
-        STOP=TRUE;
+            
         break;
        }
-        switch (state)
-       {
-        case Start:
-            if(buf[0]==FLAG){
-                state=FLAG_RCV;
-            }
-            else{
-                state=Start;
-            }
-            break;
-        case FLAG_RCV:
-            if(buf[1]==A_SENDER){
-                state=A_RCV;
-            }
-            //else if(buf onde está a falg==FLAG){state=FLAG}
-            else{
-                state=Start;
-            }
-            break;
-        case A_RCV:
-            if(buf[2]==C_SET){
-                state=C_RCV;
-            }
-            else{
-                state=Start;
-            }
-            break;
-        case C_RCV:
-            if(buf[3]==(A_SENDER ^ C_SET)){
-                state=BCC_OK;
-            }  
-            else
-            {
-                state=Start;
-            }
-            break;
-        case BCC_OK:
-            if(buf[4]==FLAG){
-                state=END;
-            }    
-            else{
-                state=Start;
-            }
-            break;
-        default:
-            state=Start;
-            break;
-        }
-       
 
     }
 
-
-    printf("var = 0x%02X\n", buf[0]);
-    printf("var = 0x%02X\n", buf[1]);
-    printf("var = 0x%02X\n", buf[2]);
-    printf("var = 0x%02X\n", buf[3]);
-    printf("var = 0x%02X\n", buf[4]);
-
     //The UA frame message is created and send to the sender
     //insert into the buffer
+
+    unsigned char buf[5] = {0};
     buf[0] = FLAG;
     buf[1] = A_RECEIVER;
     buf[2] = C_UA;
@@ -195,7 +199,8 @@ int main(int argc, char *argv[])
         perror("tcsetattr");
         exit(-1);
     }
-
+    
+    free(byte);
     close(fd);
 
     return 0;

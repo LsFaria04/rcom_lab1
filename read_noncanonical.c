@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include "msg_bytes.h"
+#include "states.h"
 
 // Baudrate settings are defined in <asm/termbits.h>, which is
 // included by <termios.h>
@@ -100,16 +101,81 @@ int main(int argc, char *argv[])
     unsigned char buf[BUF_SIZE] = {0};
 
     int bytes = 0;
+    int state = Start; 
     while (STOP == FALSE)
     {
         // Returns after 5 chars have been input
         bytes = read(fd, buf, BUF_SIZE);
-        printf("here\n");
+        
+        
+        
+        //printf("here\n");
         if (isSet(buf)){
             printf("Set received successfully\n");
             STOP = TRUE;
         }
+       if(state==END){
+        STOP=TRUE;
+        break;
+       }
+        switch (state)
+       {
+        case Start:
+            if(buf[0]==FLAG){
+                state=FLAG_RCV;
+            }
+            else{
+                state=Start;
+            }
+            break;
+        case FLAG_RCV:
+            if(buf[1]==A_SENDER){
+                state=A_RCV;
+            }
+            //else if(buf onde está a falg==FLAG){state=FLAG}
+            else{
+                state=Start;
+            }
+            break;
+        case A_RCV:
+            if(buf[2]==C_SET){
+                state=C_RCV;
+            }
+            else{
+                state=Start;
+            }
+            break;
+        case C_RCV:
+            if(buf[3]==(A_SENDER ^ C_SET)){
+                state=BCC_OK;
+            }  
+            else
+            {
+                state=Start;
+            }
+            break;
+        case BCC_OK:
+            if(buf[4]==FLAG){
+                state=END;
+            }    
+            else{
+                state=Start;
+            }
+            break;
+        default:
+            state=Start;
+            break;
+        }
+       
+
     }
+
+
+    printf("var = 0x%02X\n", buf[0]);
+    printf("var = 0x%02X\n", buf[1]);
+    printf("var = 0x%02X\n", buf[2]);
+    printf("var = 0x%02X\n", buf[3]);
+    printf("var = 0x%02X\n", buf[4]);
 
     //The UA frame message is created and send to the sender
     //insert into the buffer

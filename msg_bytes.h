@@ -7,5 +7,7 @@
 #define A_RECEIVER 0X01
 #define C_SET 0X03
 #define C_UA 0X7
+#define C_RR0 0xAA
+#define C_REJ 0x54
 
 #endif

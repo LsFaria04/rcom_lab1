@@ -173,8 +173,6 @@ int main(int argc, char *argv[])
 
             printf("Set frame received successfully\n");
             STOP = TRUE;
-            
-        break;
        }
 
     }
@@ -191,6 +189,7 @@ int main(int argc, char *argv[])
 
     //sends the bytes
     bytes = write(fd, buf, BUF_SIZE);
+    sleep(1);
     printf("%d bytes written\n", bytes);
 
     // Restore the old port settings

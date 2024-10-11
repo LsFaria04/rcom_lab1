@@ -217,12 +217,15 @@ int sendSetFrame(const unsigned char *buf){
             sleep(1);
 
         }
+
+        //allocate space for the received frame buffer
         received_buf = (unsigned char*)malloc(sizeof(unsigned char));
         *received_buf = 0;
 
         // Returns after 1 char have been input
         bytes = read(fd, received_buf, 1);
         
+        //state machine for receiving the UA frame
         state_machine_UA();
 
         if(state == END){
@@ -289,16 +292,26 @@ int llopen(LinkLayer connectionParameters){
         return -1;
     }
 
-    //create the set frame
+    //Buffer used for the Set and UA frames
     unsigned char *buf = (unsigned char*)malloc(sizeof(unsigned char) * 5);
-    createSetFrame(buf);
 
-    //send the set frame
-    if(sendSetFrame(buf) < 0){
-        printf("Timeout when sending the set frame\n");
+    if(connectionParameters.role == LlTx){
+        createSetFrame(buf);
+
+        //send the set frame
+        if(sendSetFrame(buf) < 0){
+            printf("Timeout when sending the set frame\n");
+            return -1;
+        }
+        
+    }
+    else if(connectionParameters.role == LlRx){
+        //Nothing needed in this version but will have the UA section in the project 
+    }
+    else{
+        printf("The role isn't available\n");
         return -1;
     }
-
 
     free(buf);
     return fd;

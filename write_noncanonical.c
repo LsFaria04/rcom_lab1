@@ -40,6 +40,7 @@ static int fd = -1;
 static unsigned char *received_buf;
 static int frame_numb = 0;
 static int control = 0;
+
 static int nRetransmissions = 0;
 static int timeout = 0;
 
@@ -205,6 +206,7 @@ int sendSetFrame(const unsigned char *buf){
     (void)signal(SIGALRM, alarmHandler);
 
     int bytes = 0;
+    alarmCount = 0;
 
     //waits 3s for the UA message. Tries 3 times to send the message
     while (alarmCount < nRetransmissions)
@@ -373,6 +375,8 @@ int llwrite(const unsigned char *buf, int bufSize){
 
     //starts the alarm
     (void)signal(SIGALRM, alarmHandler);
+
+    alarmCount = 0;
 
     //create the frame to send
     unsigned char *frame = (unsigned char*)malloc(sizeof(unsigned char) * (bufSize * 2 + 6)); //allocate space for the worst case scenario

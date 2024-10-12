@@ -366,6 +366,11 @@ int create_frame(unsigned char *frame, const unsigned char *buf, int bufSize){
 //sends the set frame to start the connection
 int llwrite(const unsigned char *buf, int bufSize){
 
+    //checks if the SIZE of maximum acceptable payload is exceeded
+    if(bufSize > MAX_PAYLOAD_SIZE){
+        return -1
+    }
+
     //starts the alarm
     (void)signal(SIGALRM, alarmHandler);
 
@@ -399,7 +404,7 @@ int llwrite(const unsigned char *buf, int bufSize){
             received_buf = (unsigned char*)malloc(sizeof(unsigned char));
 
             // Returns after 1 char have been input
-            bytes = read(fd, received_buf, 1);
+            read(fd, received_buf, 1);
             
             state_machine_RR_REJ(&isRej);
 
@@ -413,7 +418,7 @@ int llwrite(const unsigned char *buf, int bufSize){
                     printf("Frame %d sent successfully\n", frame_numb);
                     frame_numb++;
                     free(received_buf);
-                    return 0;
+                    return bytes;
                 }  
             }
 

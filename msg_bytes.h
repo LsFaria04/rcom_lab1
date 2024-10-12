@@ -9,5 +9,6 @@
 #define C_UA 0X7
 #define C_RR0 0xAA
 #define C_REJ 0x54
+#define ESC 0x7d
 
 #endif

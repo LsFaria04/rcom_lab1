@@ -27,13 +27,18 @@
 
 #define BUF_SIZE 5
 
+#define N(s) ((s % 2) << 6) //N(s) implements a module-2 counter, 
+//enabling to distinguish frame 0 and frame 1 
+//successively throughout transmission
+
+
 static int state = Start;
 volatile int STOP = FALSE;
 static int alarmEnabled = FALSE;
 static int alarmCount = 0;
 static int fd = -1;
 static unsigned char *received_buf;
-static int frame_numb = 1;
+static int frame_numb = 0;
 static int control = 0;
 static int nRetransmissions = 0;
 static int timeout = 0;
@@ -147,12 +152,12 @@ void state_machine_RR_REJ(bool *isRej){
             break;
 
         case A_RCV:
-            if(*received_buf == C_RR0 + frame_numb + 1){
-                control = C_RR0 + frame_numb + 1;
+            if(*received_buf == C_RR0 + (frame_numb % 2) + 1){
+                control = C_RR0 + (frame_numb % 2) + 1;
                 state = C_RCV;
             }
-            else if(*received_buf == C_RR0 + frame_numb){
-                control = C_REJ + frame_numb;
+            else if(*received_buf == C_RR0 + (frame_numb % 2)){
+                control = C_REJ + (frame_numb % 2);
                 state = C_RCV;
                 *isRej = true;
             }
@@ -318,12 +323,55 @@ int llopen(LinkLayer connectionParameters){
 
 }
 
+//creates a frame and returns it's size
+int create_frame(unsigned char *frame, const unsigned char *buf, int bufSize){
+    frame[0] = FLAG;
+    frame[1] = A_SENDER;
+    frame[2] = N(frame_numb);
+    frame[3] = frame[1] ^ frame[2];
+
+    //inserts the data into the frame
+    unsigned char bcc2 = 0;
+    int frame_index = 4;
+    for(int i = 0; i < bufSize; i++){
+        
+        if(buf[i] == FLAG){
+            frame[frame_index] = ESC;
+            frame[frame_index + 1] = FLAG ^ 0x20;
+            frame_index = frame_index + 2;
+        }
+        else if(buf[i] == ESC){
+            frame[frame_index] = ESC;
+            frame[frame_index + 1] = ESC ^ 0x20;
+            frame_index = frame_index + 2;
+        }
+        else{
+            frame[frame_index] = buf[i];
+            frame_index++;
+        }
+
+        bcc2 ^= buf[i];
+    }
+
+    frame[frame_index] = bcc2;
+    frame_index++;
+    frame[frame_index] = FLAG;
+
+
+
+    return frame_index + 1;
+
+}
 
 //sends the set frame to start the connection
 int llwrite(const unsigned char *buf, int bufSize){
 
     //starts the alarm
     (void)signal(SIGALRM, alarmHandler);
+
+    //create the frame to send
+    unsigned char *frame = (unsigned char*)malloc(sizeof(unsigned char) * (bufSize * 2 + 6)); //allocate space for the worst case scenario
+    int frame_size = create_frame(frame, buf, bufSize);
 
     bool isRej = false;
     int bytes = 0;
@@ -340,15 +388,15 @@ int llwrite(const unsigned char *buf, int bufSize){
                 alarmEnabled = TRUE;
                 
 
-                //sends the set message
-                bytes = write(fd, buf, bufSize);
+                //sends the frmame
+                bytes = write(fd, frame, frame_size);
                 printf("%d bytes written\n", bytes);
                 // Wait until all bytes have been written to the serial port
                 sleep(1);
 
             }
             
-            unsigned char *received_buf = (unsigned char*)malloc(sizeof(unsigned char));
+            received_buf = (unsigned char*)malloc(sizeof(unsigned char));
 
             // Returns after 1 char have been input
             bytes = read(fd, received_buf, 1);

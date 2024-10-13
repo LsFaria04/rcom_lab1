@@ -32,6 +32,8 @@ static int control = 0; //auxiliary variable to store the control value reveived
 
 static int frame_numb = 0;
 
+static int bcc2_control = 0;
+
 //used for the statistics
 static int number_timeouts = 0;
 static int number_rTransmissions = 0;
@@ -247,7 +249,90 @@ void state_machine_set(unsigned char *byte){
         }
 }
 
-void state_machine_data_frame(unsigned char *byte, bool isRej){
+void state_machine_data_frame(unsigned char *byte, bool *isRej){
+    switch(state_frame){
+        case START:
+            if(*byte == FLAG){
+                state_frame = FLAG_RCV;
+            }
+            else{
+                *isRej = true;
+                state_frame = START;
+            }
+            break;
+
+        case FLAG_RCV:
+            if(*byte == A_SENDER){
+                state_frame = A_RCV;
+            }
+            else if(*byte == FLAG){
+                state_frame = FLAG;
+                }
+            else{
+                state_frame = START;
+            }
+            break;
+
+        case A_RCV:
+            if(*byte == N(frame_numb)){
+                state_frame = C_RCV;
+            }
+            else if(*byte == FLAG){
+                state_frame = FLAG;
+                }
+            else if(*byte == C_DISC){
+                //the program is going to terminate
+                return;
+            }
+            else{
+                *isRej = true;
+                state_frame = START;
+            }
+            break;
+
+        case C_RCV:
+            if(*byte == (A_SENDER ^ N(frame_numb))){
+                state_frame = BCC1_OK;
+            }  
+            else if(*byte == FLAG){
+                state_frame= FLAG;
+                }
+            else
+            {
+                *isRej = true;
+                state_frame = START;
+            }
+            break;
+
+        case BCC1_OK:
+            if(*byte == FLAG){
+                state_frame = FLAG;
+            }    
+            else{
+                state_frame = DATA;
+            }
+            break;
+
+        case DATA:
+            if(*byte == bcc2_control){
+                state_frame = BCC2_OK;
+            }
+            break;
+        
+        case BCC2_OK:
+            if(*byte == FLAG){
+                state_frame = END;
+            }
+            else{
+                *isRej = true;
+                state_frame = START;
+            }
+            break;
+
+        default:
+            state_frame = START;
+            break;
+        } 
 
 }
 
@@ -374,8 +459,34 @@ int sendSetFrame(const unsigned char *frame){
     return -1;
 }
 
-//receives the set frame and sends the UA frame
-int sendUAFrame(const unsigned char *frame){
+//send the UA frame
+int sendUAframe(){
+    unsigned char *frame = (unsigned char*)malloc(sizeof(unsigned char) * 5);
+    createUAFrame(frame);
+
+    //sends the Ua frame
+    int bytes = writeBytesSerialPort(frame, 5);
+    // Wait until all bytes have been written to the serial port
+    sleep(1);
+
+    if(bytes < 0){
+        return -1;
+    }
+
+    return 0;
+}
+
+int sendDiscFrame(bool isTransmitter){
+    return 0;
+}
+
+
+int receiveDiscFrame(){
+    return 0;
+}
+
+//receives the set frame and sends the UA frame in order to connect to the receiver
+int connectToReceiver(){
     printf("New termios structure set\n");
 
     int byte = 0;
@@ -401,15 +512,16 @@ int sendUAFrame(const unsigned char *frame){
 
     }
 
-    // Returns after 1 char have been input
-    byte = writeBytesSerialPort(frame, 5);
-    printf("%d bytes written\n", byte);
-    // Wait until all bytes have been written to the serial port
-    sleep(1);
+    if(sendUAframe() < 0){
+        return -1;
+    }
 
     free(received_frame);
     return 0;
 }
+
+
+
 ////////////////////////////////////////////////
 // LLOPEN
 ////////////////////////////////////////////////
@@ -439,11 +551,7 @@ int llopen(LinkLayer connectionParameters)
             }
             break;
         case LlRx:
-            createUAFrame(frame);
-
-            //send the UA frame after receiveing the set frame
-            if(sendUAFrame(frame) < 0){
-                printf("Something went wrong when receiving the set frame\n");
+            if(connectToReceiver() < 0){
                 return -1;
             }
             break;
@@ -563,18 +671,28 @@ int llread(unsigned char *packet)
             
             state_machine_data_frame(received_frame, &isRej);
 
+
+
             if(isRej){
                 send_rej_frame();
+                isRej = false;
                 continue;
+            }
+
+            if(state_frame == A_RCV && *received_frame == C_DISC){
+                sendDiscFrame(false);
+                return 0;
             }
 
             //handles the special bytes using the byte stuffing mechanism
             if(isSpecial){
                 if(*received_frame == (FLAG ^ 0x20)){
                     packet[byte_count] = FLAG;
+                    bcc2_control ^= FLAG;
                 }
                 else{
                     packet[byte_count] = ESC;
+                    bcc2_control ^= ESC;
                 }
 
                 isSpecial = false;
@@ -584,6 +702,8 @@ int llread(unsigned char *packet)
             //checks if the byte received is data
             if((state_frame == DATA)){
 
+                
+
                 //checks if the byte receivd is a special character from the byte stuffing mechanism
                 if(*received_frame == ESC){
                     isSpecial = true;
@@ -591,6 +711,7 @@ int llread(unsigned char *packet)
                 else{
                     packet[byte_count] = *received_frame;
                     byte_count++;
+                    bcc2_control ^= *received_frame;
                 }
                 
             }
@@ -610,11 +731,35 @@ int llread(unsigned char *packet)
     return -1;
 }
 
+
+
+
+
+//terminates the connection between the receiver and the transmitter
+int terminate_connection(){
+    if(sendDiscFrame(true) < 0){
+        return -1;
+    }
+
+    if(receiveDiscFrame() < 0){
+        return -1;
+    }
+    if(sendUAframe() < 0){
+        return -1;
+    }
+
+    return 0;
+}
+
 ////////////////////////////////////////////////
 // LLCLOSE
 ////////////////////////////////////////////////
 int llclose(int showStatistics)
 {   
+    if(terminate_connection() < 0){
+        return -1;
+    }
+
     if(showStatistics){
         printf("Number of timeouts = %d\n", number_timeouts);
         printf("Number of retransmissions = %d\n", number_rTransmissions);

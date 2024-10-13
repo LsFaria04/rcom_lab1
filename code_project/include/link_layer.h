@@ -35,6 +35,7 @@ typedef struct
 #define C_UA 0X7
 #define C_RR0 0xAA
 #define C_REJ 0x54
+#define C_DISC 0x0B
 #define ESC 0x7d
 #define N(s) ((s % 2) << 6)
 

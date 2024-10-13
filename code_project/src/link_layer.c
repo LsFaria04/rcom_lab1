@@ -633,6 +633,11 @@ int llwrite(const unsigned char *buf, int bufSize)
 
             
         }
+        if(!isRej){
+            //The transmitter isn't trying to send again because is a timeout
+            break;
+        }
+        isRej = false;
         alarm(0);//reset the alarm
         
     }

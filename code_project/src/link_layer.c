@@ -247,6 +247,20 @@ void state_machine_set(unsigned char *byte){
         }
 }
 
+void state_machine_data_frame(unsigned char *byte, bool isRej){
+
+}
+
+int send_rej_frame(){
+
+    return 0;
+}
+
+int send_rr_frame(){
+
+    return 0;
+}
+
 //creates the set frame
 void createSetFrame(unsigned char *frame){
     frame[0] = FLAG;
@@ -523,9 +537,77 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(unsigned char *packet)
 {
-    // TODO
+    int byte_count = 0;
+    //allocate space for the received frame buffer
+    unsigned char *received_frame = (unsigned char*)malloc(sizeof(unsigned char));
 
-    return 0;
+    bool isRej = false;
+    bool isSpecial = false;
+    int byte = 0;
+    state_frame = START;
+
+    //only exits after completing the data receiving
+    while(true){
+
+            byte = readByteSerialPort(received_frame);
+
+            if(byte < 0){
+                printf("something went wrong when reading the data bytes\n");
+                break;
+            }
+
+            //didn't receive any new byte
+            if(byte == 0){
+                continue;
+            }
+            
+            state_machine_data_frame(received_frame, &isRej);
+
+            if(isRej){
+                send_rej_frame();
+                continue;
+            }
+
+            //handles the special bytes using the byte stuffing mechanism
+            if(isSpecial){
+                if(*received_frame == (FLAG ^ 0x20)){
+                    packet[byte_count] = FLAG;
+                }
+                else{
+                    packet[byte_count] = ESC;
+                }
+
+                isSpecial = false;
+                byte_count++;
+            }
+
+            //checks if the byte received is data
+            if((state_frame == DATA)){
+
+                //checks if the byte receivd is a special character from the byte stuffing mechanism
+                if(*received_frame == ESC){
+                    isSpecial = true;
+                }
+                else{
+                    packet[byte_count] = *received_frame;
+                    byte_count++;
+                }
+                
+            }
+
+            
+            //if the frame received is rej, exit the loop and try again. Else, exit the function and increase the frame counter
+            if(state_frame == END){
+                printf("Data received successfully\n");
+                send_rr_frame();
+                free(received_frame);
+                return 0;
+        }  
+        
+    }
+
+    free(received_frame);
+    return -1;
 }
 
 ////////////////////////////////////////////////

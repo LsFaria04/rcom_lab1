@@ -30,9 +30,9 @@ static int fd = -1;
 
 static int control = 0; //auxiliary variable to store the control value reveived in a frame
 
-static int frame_numb = 0;
+static int frame_numb = 0; //auxiliary varible to count the frames received
 
-static int bcc2_control = 0;
+static int bcc2_control = 0; //used to check if the bcc2 control is correct
 
 //used for the statistics
 static int number_timeouts = 0;
@@ -336,15 +336,7 @@ void state_machine_data_frame(unsigned char *byte, bool *isRej){
 
 }
 
-int send_rej_frame(){
 
-    return 0;
-}
-
-int send_rr_frame(){
-
-    return 0;
-}
 
 //creates the set frame
 void createSetFrame(unsigned char *frame){
@@ -472,6 +464,16 @@ int sendUAframe(){
     if(bytes < 0){
         return -1;
     }
+
+    return 0;
+}
+
+int send_rej_frame(){
+
+    return 0;
+}
+
+int send_rr_frame(){
 
     return 0;
 }
@@ -685,6 +687,7 @@ int llread(unsigned char *packet)
             }
 
             if(state_frame == A_RCV && *received_frame == C_DISC){
+                free(received_frame);
                 sendDiscFrame(false);
                 return 0;
             }
@@ -722,12 +725,12 @@ int llread(unsigned char *packet)
             }
 
             
-            //if the frame received is rej, exit the loop and try again. Else, exit the function and increase the frame counter
+            //if the frame is successfully received, send the rr to confirm an return the number of chars read
             if(state_frame == END){
-                printf("Data received successfully\n");
+                printf("Frame %d received successfully\n", frame_numb);
                 send_rr_frame();
-                free(received_frame);
-                return 0;
+                return byte_count + 1;
+
         }  
         
     }

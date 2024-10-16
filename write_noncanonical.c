@@ -370,7 +370,7 @@ int llwrite(const unsigned char *buf, int bufSize){
 
     //checks if the SIZE of maximum acceptable payload is exceeded
     if(bufSize > MAX_PAYLOAD_SIZE){
-        return -1
+        return -1;
     }
 
     //starts the alarm

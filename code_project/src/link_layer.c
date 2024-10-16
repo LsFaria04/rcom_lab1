@@ -393,6 +393,21 @@ int create_frame(unsigned char *frame, const unsigned char *buf, int bufSize){
     return frame_index + 1;
 }
 
+//creates disc frame
+void createDiscFrame(unsigned char *frame, bool sender){
+    frame[0]=FLAG;
+    frame[2] = C_DISC;
+    frame[3] = A_RECEIVER ^ C_DISC;
+    frame[4] = FLAG;
+    if(sender){
+        frame[1]=A_SENDER;
+    }
+    else{
+        frame[1]=A_RECEIVER;
+    }
+    
+}
+
 int sendSetFrame(const unsigned char *frame){
 
     printf("New termios structure set\n");

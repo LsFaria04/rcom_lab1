@@ -249,6 +249,72 @@ void state_machine_set(unsigned char *byte){
         }
 }
 
+//state machine for receiving the disc frame
+void state_machine_disc(unsigned char *byte){
+    switch (state_command)
+       {
+
+        case START:
+            if(*byte == FLAG){
+                state_command = FLAG_RCV;
+            }
+            else{
+                state_command = START;
+            }
+            break;
+
+        case FLAG_RCV:
+            if(*byte == A_SENDER || *byte==A_RECEIVER){
+                state_command = A_RCV;
+            }
+            else if(*byte == FLAG){
+                state_command = FLAG;
+                }
+            else{
+                state_command = START;
+            }
+            break;
+
+        case A_RCV:
+            if(*byte == C_DISC){
+                state_command = C_RCV;
+            }
+            else if(*byte == FLAG){
+                state_command = FLAG;
+                }
+            else{
+                state_command = START;
+            }
+            break;
+
+        case C_RCV:
+            if(*byte == (A_SENDER ^ C_DISC)){
+                state_command = BCC1_OK;
+            }  
+            else if(*byte == FLAG){
+                state_command = FLAG;
+                }
+            else
+            {
+                state_command = START;
+            }
+            break;
+
+        case BCC1_OK:
+            if(*byte == FLAG){
+                state_command = END;
+            }    
+            else{
+                state_command = START;
+            }
+            break;
+
+        default:
+            state_command = START;
+            break;
+        }
+}
+
 void state_machine_data_frame(unsigned char *byte, bool *isRej){
     switch(state_frame){
         case START:

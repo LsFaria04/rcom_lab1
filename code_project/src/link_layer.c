@@ -560,6 +560,20 @@ int send_rr_frame(){
 }
 
 int sendDiscFrame(bool isTransmitter){
+    unsigned char *frame = (unsigned char*)malloc(sizeof(unsigned char) * 5);
+    createDiscFrame(frame,isTransmitter);
+
+    //send the disc frame
+    int bytes = writeBytesSerialPort(frame, 5);
+
+    //waits until all bytes have been written in the serial port
+    sleep(1);
+
+    
+    if(bytes<0){
+        return -1;
+    }
+
     return 0;
 }
 
@@ -739,6 +753,7 @@ int llread(unsigned char *packet)
 
     bool isRej = false;
     bool isSpecial = false;
+    bool isDisc = false;
     int byte = 0;
     state_frame = START;
 
@@ -768,9 +783,8 @@ int llread(unsigned char *packet)
             }
 
             if(state_frame == A_RCV && *received_frame == C_DISC){
-                free(received_frame);
-                sendDiscFrame(false);
-                return 0;
+
+                isDisc=true;
             }
 
             //handles the special bytes using the byte stuffing mechanism
@@ -808,9 +822,17 @@ int llread(unsigned char *packet)
             
             //if the frame is successfully received, send the rr to confirm an return the number of chars read
             if(state_frame == END){
-                printf("Frame %d received successfully\n", frame_numb);
-                send_rr_frame();
-                return byte_count + 1;
+                if(isDisc){
+                    free(received_frame);
+                    sendDiscFrame(false);
+                    return 0;
+                }
+                else{
+                    printf("Frame %d received successfully\n", frame_numb);
+                    send_rr_frame();
+                    return byte_count + 1;
+                }
+                
 
         }  
         

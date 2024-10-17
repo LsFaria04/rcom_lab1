@@ -251,66 +251,66 @@ void state_machine_set(unsigned char *byte){
 
 //state machine for receiving the disc frame
 void state_machine_disc(unsigned char *byte){
-    switch (state_command)
+    switch (state_frame)
        {
 
         case START:
             if(*byte == FLAG){
-                state_command = FLAG_RCV;
+                state_frame = FLAG_RCV;
             }
             else{
-                state_command = START;
+                state_frame = START;
             }
             break;
 
         case FLAG_RCV:
             if(*byte == A_SENDER || *byte==A_RECEIVER){
-                state_command = A_RCV;
+                state_frame = A_RCV;
             }
             else if(*byte == FLAG){
-                state_command = FLAG;
+                state_frame = FLAG;
                 }
             else{
-                state_command = START;
+                state_frame = START;
             }
             break;
 
         case A_RCV:
             if(*byte == C_DISC){
-                state_command = C_RCV;
+                state_frame = C_RCV;
             }
             else if(*byte == FLAG){
-                state_command = FLAG;
+                state_frame = FLAG;
                 }
             else{
-                state_command = START;
+                state_frame = START;
             }
             break;
 
         case C_RCV:
             if(*byte == (A_SENDER ^ C_DISC)){
-                state_command = BCC1_OK;
+                state_frame = BCC1_OK;
             }  
             else if(*byte == FLAG){
-                state_command = FLAG;
+                state_frame = FLAG;
                 }
             else
             {
-                state_command = START;
+                state_frame = START;
             }
             break;
 
         case BCC1_OK:
             if(*byte == FLAG){
-                state_command = END;
+                state_frame = END;
             }    
             else{
-                state_command = START;
+                state_frame = START;
             }
             break;
 
         default:
-            state_command = START;
+            state_frame = START;
             break;
         }
 }
@@ -569,7 +569,7 @@ int sendDiscFrame(bool isTransmitter){
     //waits until all bytes have been written in the serial port
     sleep(1);
 
-    
+
     if(bytes<0){
         return -1;
     }
@@ -579,7 +579,25 @@ int sendDiscFrame(bool isTransmitter){
 
 
 int receiveDiscFrame(){
-    return 0;
+    state_frame = START;
+    unsigned char *received_frame = (unsigned char*)malloc(sizeof(unsigned char));
+    int byte=0;
+    while(true){
+        byte=readByteSerialPort(received_frame);
+
+        state_machine_disc(received_frame);
+
+
+        if(state_frame=END){
+            printf("Disc received successfully\n");
+            free(received_frame);
+
+            
+            return 0;
+        }
+    }
+    free(received_frame);
+    return 1;
 }
 
 //receives the set frame and sends the UA frame in order to connect to the receiver
@@ -754,6 +772,7 @@ int llread(unsigned char *packet)
     bool isRej = false;
     bool isSpecial = false;
     bool isDisc = false;
+    bool isUA = false;
     int byte = 0;
     state_frame = START;
 
@@ -785,6 +804,9 @@ int llread(unsigned char *packet)
             if(state_frame == A_RCV && *received_frame == C_DISC){
 
                 isDisc=true;
+            }
+            if(state_frame==A_RCV && *received_frame==C_UA){
+                isUA=true;
             }
 
             //handles the special bytes using the byte stuffing mechanism
@@ -820,11 +842,16 @@ int llread(unsigned char *packet)
             }
 
             
-            //if the frame is successfully received, send the rr to confirm an return the number of chars read
+            //if the frame is successfully received, send the rr to confirm an return the number of chars read or a disc frame
             if(state_frame == END){
                 if(isDisc){
                     free(received_frame);
                     sendDiscFrame(false);
+                    
+                }
+                else if(isUA){
+                    //connection succssefully terminated
+                    free(received_frame);
                     return 0;
                 }
                 else{

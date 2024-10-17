@@ -581,14 +581,14 @@ int sendDiscFrame(bool isTransmitter){
 int receiveDiscFrame(){
     state_frame = START;
     unsigned char *received_frame = (unsigned char*)malloc(sizeof(unsigned char));
-    int byte=0;
+    
     while(true){
-        byte=readByteSerialPort(received_frame);
+        readByteSerialPort(received_frame);
 
         state_machine_disc(received_frame);
 
 
-        if(state_frame=END){
+        if(state_frame==END){
             printf("Disc received successfully\n");
             free(received_frame);
 

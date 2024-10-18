@@ -20,22 +20,27 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     llopen(connectionParameters);
 
     if(connectionParameters.role == LlTx){
-        unsigned char *buf = (unsigned char*)malloc(sizeof(unsigned char) * 3);
+        unsigned char *buf = (unsigned char*)malloc(sizeof(unsigned char) * 5);
 
-        buf[0] = 0x90;
-        buf[1] = 0x20;
-        buf[2] = 0x7e;
+        /*buf[0] = 0x7E;
+        buf[1]=0X03;
+        buf[2] = 0x0B;
+        buf[3]=0x03^0x0B;
+        buf[4] = 0x7E;
 
-        llwrite(buf, 3);
-
+        int res=llwrite(buf, 5);
+        printf("aa\n");
+        printf("%d\n",res);
+        */
         free(buf);
+        llclose(FALSE);
     }
 
     else{
         unsigned char *packet = (unsigned char*)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE);
         llread(packet);
 
-        for(int i = 0; i < 3; i++){
+        for(int i = 0; i < 5; i++){
             printf("char n%d = %x\n", i, packet[i]);
         }
 

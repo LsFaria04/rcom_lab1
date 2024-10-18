@@ -288,9 +288,10 @@ void state_machine_disc(unsigned char *byte){
             break;
 
         case C_RCV:
-            if(*byte == (A_SENDER ^ C_DISC)){
+            if(*byte == (A_SENDER ^ C_DISC) || *byte == (A_RECEIVER ^ C_DISC)){
                 state_frame = BCC1_OK;
-            }  
+            }
+              
             else if(*byte == FLAG){
                 state_frame = FLAG;
                 }
@@ -315,7 +316,7 @@ void state_machine_disc(unsigned char *byte){
         }
 }
 
-void state_machine_data_frame(unsigned char *byte, bool *isRej){
+void state_machine_data_frame(unsigned char *byte, bool *isRej, bool *isDisc){
     switch(state_frame){
         case START:
             if(*byte == FLAG){
@@ -348,7 +349,9 @@ void state_machine_data_frame(unsigned char *byte, bool *isRej){
                 }
             else if(*byte == C_DISC){
                 //the program is going to terminate
-                return;
+                *isDisc=true;
+                state_frame=C_RCV;
+                printf("disc rcv\n");
             }
             else{
                 *isRej = true;
@@ -359,7 +362,11 @@ void state_machine_data_frame(unsigned char *byte, bool *isRej){
         case C_RCV:
             if(*byte == (A_SENDER ^ N(frame_numb))){
                 state_frame = BCC1_OK;
-            }  
+            } 
+            else if(*byte==(A_SENDER ^ C_DISC)) {
+                printf("bcc1_ok\n");
+                state_frame=BCC1_OK;
+            }
             else if(*byte == FLAG){
                 state_frame= FLAG;
                 }
@@ -371,7 +378,11 @@ void state_machine_data_frame(unsigned char *byte, bool *isRej){
             break;
 
         case BCC1_OK:
-            if(*byte == FLAG){
+            if(*byte==FLAG && *isDisc){
+                printf("here\n");
+                state_frame=END;
+            }
+            else if(*byte == FLAG){
                 state_frame = FLAG;
             }    
             else{
@@ -463,7 +474,6 @@ int create_frame(unsigned char *frame, const unsigned char *buf, int bufSize){
 void createDiscFrame(unsigned char *frame, bool sender){
     frame[0]=FLAG;
     frame[2] = C_DISC;
-    frame[3] = A_RECEIVER ^ C_DISC;
     frame[4] = FLAG;
     if(sender){
         frame[1]=A_SENDER;
@@ -471,7 +481,7 @@ void createDiscFrame(unsigned char *frame, bool sender){
     else{
         frame[1]=A_RECEIVER;
     }
-    
+    frame[3] = frame[1] ^ C_DISC;
 }
 
 int sendSetFrame(const unsigned char *frame){
@@ -521,6 +531,7 @@ int sendSetFrame(const unsigned char *frame){
 
         if(state_command == END){
             printf("UA reveived successfully\n");
+            alarm(0);
             free(received_frame);
             return 0;
         }
@@ -565,12 +576,17 @@ int sendDiscFrame(bool isTransmitter){
 
     //send the disc frame
     int bytes = writeBytesSerialPort(frame, 5);
-
+    printf("%d bytes have been writeen\n",bytes);
+    for(int i=0; i<5;i++){
+        printf("%x\n",frame[i]);
+    }
+    
     //waits until all bytes have been written in the serial port
     sleep(1);
-
+    
 
     if(bytes<0){
+        printf("failed do send\n");
         return -1;
     }
 
@@ -581,11 +597,16 @@ int sendDiscFrame(bool isTransmitter){
 int receiveDiscFrame(){
     state_frame = START;
     unsigned char *received_frame = (unsigned char*)malloc(sizeof(unsigned char));
-    
+    int bytes=0;
     while(true){
-        readByteSerialPort(received_frame);
+        bytes=readByteSerialPort(received_frame);
 
+        if(bytes<0){
+            printf("ERROR\n");
+        }
         state_machine_disc(received_frame);
+        printf("%x\n",*received_frame);
+        
 
 
         if(state_frame==END){
@@ -597,7 +618,7 @@ int receiveDiscFrame(){
         }
     }
     free(received_frame);
-    return 1;
+    return -1;
 }
 
 //receives the set frame and sends the UA frame in order to connect to the receiver
@@ -791,7 +812,7 @@ int llread(unsigned char *packet)
                 continue;
             }
             
-            state_machine_data_frame(received_frame, &isRej);
+            state_machine_data_frame(received_frame, &isRej, &isDisc);
 
 
 
@@ -804,6 +825,7 @@ int llread(unsigned char *packet)
             if(state_frame == A_RCV && *received_frame == C_DISC){
 
                 isDisc=true;
+                printf("receiving disc\n");
             }
             if(state_frame==A_RCV && *received_frame==C_UA){
                 isUA=true;
@@ -844,13 +866,16 @@ int llread(unsigned char *packet)
             
             //if the frame is successfully received, send the rr to confirm an return the number of chars read or a disc frame
             if(state_frame == END){
+                printf("state_end\n");
                 if(isDisc){
-                    free(received_frame);
+                    printf("Disc received\n");
+                    
                     sendDiscFrame(false);
                     
                 }
                 else if(isUA){
                     //connection succssefully terminated
+                    printf("ua received\n");
                     free(received_frame);
                     return 0;
                 }
@@ -875,13 +900,18 @@ int llread(unsigned char *packet)
 
 //terminates the connection between the receiver and the transmitter
 int terminate_connection(){
-    if(sendDiscFrame(true) < 0){
+    printf("before sending disc\n");
+    if(sendDiscFrame(true) != 0){
+        printf("faield to send\n");
         return -1;
     }
 
+    printf("before receiving disc\n");
     if(receiveDiscFrame() < 0){
         return -1;
     }
+
+    printf("before sending ua\n");
     if(sendUAframe() < 0){
         return -1;
     }

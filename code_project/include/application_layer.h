@@ -4,6 +4,14 @@
 #ifndef _APPLICATION_LAYER_H_
 #define _APPLICATION_LAYER_H_
 
+//control field
+#define C_START 1
+#define C_DATA 2
+#define C_END 3
+
+//
+
+
 // Application layer main function.
 // Arguments:
 //   serialPort: Serial port name (e.g., /dev/ttyS0).

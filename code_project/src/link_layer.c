@@ -450,7 +450,6 @@ int createDataFrame(unsigned char *frame, const unsigned char *buf, int bufSize)
     frame[frame_index] = bcc2;
     frame_index++;
     frame[frame_index] = FLAG;
-
     return frame_index + 1;
 }
 
@@ -702,7 +701,6 @@ int terminate_connection(){
             alarm(timeout); // Set alarm to be triggered in 3s
             alarmEnabled = TRUE;
             
-            printf("here");
             if(sendUnnumberedFrame(DISC, true) != 0){
                 return -1;
             }
@@ -771,7 +769,7 @@ int llopen(LinkLayer connectionParameters)
             return -1;
 
     }
-    
+
     return 1;
 }
 
@@ -894,7 +892,7 @@ int llread(unsigned char *packet)
                 printf("no byte\n");
                 continue;
             }
-            
+      
             state_machine_data_frame(received_frame, &isRej, &isDisc);
 
             if(isRej){
@@ -921,10 +919,12 @@ int llread(unsigned char *packet)
                 if(*received_frame == (FLAG ^ 0x20)){
                     
                     packet[byte_count] = FLAG;
+                    
                 }
                 else{
                    
                     packet[byte_count] = ESC;
+                    
                 }
 
                 isSpecial = false;
@@ -942,13 +942,15 @@ int llread(unsigned char *packet)
                 else{
                     packet[byte_count] = *received_frame;
                     byte_count++;
+                    
                 }
+                
                 
             }
 
             //if the frame is successfully received, send the rr to confirm an return the number of chars read or a disc frame
             if(state_frame == END){
-
+                
                 if(isDisc){
                     //sends the disc frame to the sender and receive an UA 
                     sendUnnumberedFrame(DISC, false);
@@ -961,23 +963,32 @@ int llread(unsigned char *packet)
 
                 
 
-
-                for(int i = 0; i < byte_count; i++){
+                bcc2_control = 0;
+                for(int i = 0; i < byte_count - 1; i++){
                     bcc2_control ^= packet[i];
+                    
                 }
 
+                //special case when the bcc2 has the same value as the flag wich makes the state machine exit earlier than expected 
+                if(packet[byte_count - 1] == FLAG){
+                     bcc2_control ^= packet[byte_count - 1];
+                }
+
+                printf("bcc2_control = %x\n", packet[byte_count]);
                 //before ending the reception verifies if the data was sent correctly
                 if(packet[byte_count - 1] != bcc2_control){
                     isRej = true;
                     state_command = START;
+                    byte_count = 0;
                     continue;
                 }
 
                 isRej = false;
-                packet[byte_count] = '\0';
+                packet[byte_count - 1] = '\0';
                 
                 printf("Frame %d received successfully\n", frame_numb);
                 sendSupervisionFrame(&isRej);
+                frame_numb++;
                 return byte_count + 1;
                 
         }  
@@ -995,7 +1006,6 @@ int llread(unsigned char *packet)
 int llclose(int showStatistics)
 {   
     if(role == LlTx){
-        
         if(terminate_connection() < 0){
             return -1;
         }

@@ -22,18 +22,16 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     if(connectionParameters.role == LlTx){
         unsigned char *buf = (unsigned char*)malloc(sizeof(unsigned char) * 5);
 
-        /*buf[0] = 0x7E;
+        buf[0] = 0x7E;
         buf[1]=0X03;
         buf[2] = 0x0B;
         buf[3]=0x03^0x0B;
         buf[4] = 0x7E;
 
-        int res=llwrite(buf, 5);
-        printf("aa\n");
-        printf("%d\n",res);
-        */
+        llwrite(buf, 5);
+
+        
         free(buf);
-        llclose(FALSE);
     }
 
     else{
@@ -43,6 +41,9 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         for(int i = 0; i < 5; i++){
             printf("char n%d = %x\n", i, packet[i]);
         }
+
+
+        llread(packet);
 
         free(packet);
     }

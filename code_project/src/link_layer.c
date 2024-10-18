@@ -26,13 +26,11 @@ state state_frame = START;
 int nRetransmissions = 0;
 int timeout = 0;
 
-static int fd = -1;
-
-static int control = 0; //auxiliary variable to store the control value reveived in a frame
+//auxiliary values to use in the state machines
+static int control = 0; 
+static int bcc2_control = 0; 
 
 static int frame_numb = 0; //auxiliary varible to count the frames received
-
-static int bcc2_control = 0; //used to check if the bcc2 control is correct
 
 static LinkLayerRole role; //used to check the role in the connection
 
@@ -45,8 +43,11 @@ void alarmHandler(int signal)
 {
     alarmEnabled = FALSE;
     alarmCount++;
+    number_timeouts++;
     printf("Alarm #%d\n", alarmCount);
 }
+
+//========================================= STATE MACHINES ======================================================================================
 
 //state machine for receiving the UA frame
 void state_machine_UA(unsigned char *received_buf, bool isSender){
@@ -117,6 +118,7 @@ void state_machine_UA(unsigned char *received_buf, bool isSender){
         }
 }
 
+//state machine for receiving the unnumbered frames (rr and rej)
 void state_machine_RR_REJ(unsigned char *received_buf, bool *isRej){
         switch (state_command)
        {
@@ -213,7 +215,7 @@ void state_machine_set(unsigned char *byte){
                 state_command = A_RCV;
             }
             else if(*byte == FLAG){
-                state_command = FLAG;
+                state_command = FLAG_RCV;
                 }
             else{
                 state_command = START;
@@ -225,7 +227,7 @@ void state_machine_set(unsigned char *byte){
                 state_command = C_RCV;
             }
             else if(*byte == FLAG){
-                state_command = FLAG;
+                state_command = FLAG_RCV;
                 }
             else{
                 state_command = START;
@@ -237,7 +239,7 @@ void state_machine_set(unsigned char *byte){
                 state_command = BCC1_OK;
             }  
             else if(*byte == FLAG){
-                state_command = FLAG;
+                state_command = FLAG_RCV;
                 }
             else
             {
@@ -279,7 +281,7 @@ void state_machine_disc(unsigned char *byte, bool isSender){
                 state_command = A_RCV;
             }
             else if(*byte == FLAG){
-                state_command = FLAG;
+                state_command = START;
                 }
             else{
                 state_command = START;
@@ -291,7 +293,7 @@ void state_machine_disc(unsigned char *byte, bool isSender){
                 state_command = C_RCV;
             }
             else if(*byte == FLAG){
-                state_command = FLAG;
+                state_command = START;
                 }
             else{
                 state_command = START;
@@ -304,7 +306,7 @@ void state_machine_disc(unsigned char *byte, bool isSender){
             }
               
             else if(*byte == FLAG){
-                state_command = FLAG;
+                state_command = START;
                 }
             else
             {
@@ -327,6 +329,7 @@ void state_machine_disc(unsigned char *byte, bool isSender){
         }
 }
 
+//state machine to process the data frames (I Frames) but also a disc frame received after a data frame 
 void state_machine_data_frame(unsigned char *byte, bool *isRej, bool *isDisc){
     switch(state_frame){
         case START:
@@ -344,7 +347,7 @@ void state_machine_data_frame(unsigned char *byte, bool *isRej, bool *isDisc){
                 state_frame = A_RCV;
             }
             else if(*byte == FLAG){
-                state_frame = FLAG;
+                state_frame = FLAG_RCV;
                 }
             else{
                 state_frame = START;
@@ -356,7 +359,7 @@ void state_machine_data_frame(unsigned char *byte, bool *isRej, bool *isDisc){
                 state_frame = C_RCV;
             }
             else if(*byte == FLAG){
-                state_frame = FLAG;
+                state_frame = FLAG_RCV;
                 }
             else if(*byte == C_DISC){
                 //the program is going to terminate
@@ -378,7 +381,7 @@ void state_machine_data_frame(unsigned char *byte, bool *isRej, bool *isDisc){
                 state_frame=BCC1_OK;
             }
             else if(*byte == FLAG){
-                state_frame= FLAG;
+                state_frame= FLAG_RCV;
                 }
             else
             {
@@ -393,7 +396,7 @@ void state_machine_data_frame(unsigned char *byte, bool *isRej, bool *isDisc){
                 state_frame=END;
             }
             else if(*byte == FLAG){
-                state_frame = FLAG;
+                state_frame = FLAG_RCV;
             }    
             else{
                 state_frame = DATA;
@@ -401,27 +404,18 @@ void state_machine_data_frame(unsigned char *byte, bool *isRej, bool *isDisc){
             break;
 
         case DATA:
-            if(*byte == bcc2_control){
-                state_frame = BCC2_OK;
-            }
-            break;
-        
-        case BCC2_OK:
             if(*byte == FLAG){
                 state_frame = END;
             }
-            else{
-                *isRej = true;
-                state_frame = START;
-            }
             break;
-
         default:
             state_frame = START;
             break;
         } 
 
 }
+
+// =============================================================================== FRAME CREATORS ==================================================================================================
 
 //creates a frame and returns it's size
 int createDataFrame(unsigned char *frame, const unsigned char *buf, int bufSize){
@@ -460,9 +454,9 @@ int createDataFrame(unsigned char *frame, const unsigned char *buf, int bufSize)
     return frame_index + 1;
 }
 
-//Creates a unumbered frame
+//Creates a unNumbered frame (the commands set, ua or disc)
 void createUnnumberedFrame(unsigned char *frame, command cmd, bool isSender){
-    frame[0]=FLAG;
+    frame[0] = FLAG;
     frame[4] = FLAG;
 
     if(isSender){
@@ -489,7 +483,7 @@ void createUnnumberedFrame(unsigned char *frame, command cmd, bool isSender){
     
 }
 
-
+//Creates a supervision frame (rr or rej)
 void createSuperVisionFrame(unsigned char *frame, bool *isRej){
     frame[0] = FLAG;
     frame[1] = A_SENDER;
@@ -505,6 +499,8 @@ void createSuperVisionFrame(unsigned char *frame, bool *isRej){
 
     frame[4] = FLAG;
 }
+
+// ==================================================================================== FRAME SENDERS AND RECEIVERS (SUPERVISOR AND UNNNUMBERED) ====================================================================================
 
 //sends an unnumbered frame (command) 
 int sendUnnumberedFrame(command cmd, bool isSender){
@@ -525,6 +521,26 @@ int sendUnnumberedFrame(command cmd, bool isSender){
         printf("failed do send\n");
         return -1;
     }
+
+    return 0;
+}
+
+//sends a supervision frame
+int sendSupervisionFrame(bool *isRej){
+
+    unsigned char *frame = (unsigned char*)malloc(sizeof(unsigned char) * 5);
+    createSuperVisionFrame(frame, isRej);
+
+    //sends the supervision frame
+    int bytes = writeBytesSerialPort(frame, 5);
+
+    // Wait until all bytes have been written to the serial port
+    sleep(1);
+
+    if(bytes < 0){
+        return -1;
+    }
+    free(frame);
 
     return 0;
 }
@@ -596,26 +612,10 @@ int receiveUnnumberedFrame(command cmd, bool isSender, bool hasTimeout){
 
 }
 
-//sends a supervision frame
-int sendSupervisionFrame(bool *isRej){
-    unsigned char *frame = (unsigned char*)malloc(sizeof(unsigned char) * 5);
-    createSuperVisionFrame(frame, isRej);
+//================================================================================================ START AND FINNISH CONNECTION FUNCTIONS =============================================================
 
-    //sends the supervision frame
-    int bytes = writeBytesSerialPort(frame, 5);
-
-    // Wait until all bytes have been written to the serial port
-    sleep(1);
-
-    if(bytes < 0){
-        return -1;
-    }
-    free(frame);
-
-    return 0;
-}
-
-int connectToReceiver(const unsigned char *frame){
+//Connects the Sender to the receiver (sends the Set frame and waits the reception of the UA frame)
+int connectToReceiver(){
 
     printf("New termios structure set\n");
 
@@ -646,6 +646,7 @@ int connectToReceiver(const unsigned char *frame){
 
         if(byte == 0){
             printf("Connection to receiver completed\n");
+            number_rTransmissions += alarmCount;
             alarm(0);
             return 0;
         }
@@ -656,6 +657,8 @@ int connectToReceiver(const unsigned char *frame){
         
 
     }
+
+    number_rTransmissions += alarmCount;
 
     alarm(0);
     return -1;
@@ -699,6 +702,7 @@ int terminate_connection(){
             alarm(timeout); // Set alarm to be triggered in 3s
             alarmEnabled = TRUE;
             
+            printf("here");
             if(sendUnnumberedFrame(DISC, true) != 0){
                 return -1;
             }
@@ -709,6 +713,7 @@ int terminate_connection(){
 
 
         if(byte == 0){
+            number_rTransmissions += alarmCount;
             if(sendUnnumberedFrame(UA, false) < 0){
                 return -1;
             }
@@ -723,18 +728,19 @@ int terminate_connection(){
 
     }
 
+    number_rTransmissions += alarmCount;
     alarm(0);
     return -1;
 }
 
-
+//===================================================================================================== MAIN DATA LAYER FUNCTIONS ========================================================================= 
 
 ////////////////////////////////////////////////
 // LLOPEN
 ////////////////////////////////////////////////
 int llopen(LinkLayer connectionParameters)
 {
-    fd = openSerialPort(connectionParameters.serialPort,connectionParameters.baudRate);
+    int fd = openSerialPort(connectionParameters.serialPort,connectionParameters.baudRate);
     if (fd < 0)
     {
         perror(connectionParameters.serialPort);
@@ -745,13 +751,10 @@ int llopen(LinkLayer connectionParameters)
     nRetransmissions = connectionParameters.nRetransmissions;
     timeout = connectionParameters.timeout;
 
-    //Frame used for the Set and UA frames
-    unsigned char *frame = (unsigned char*)malloc(sizeof(unsigned char) * 5);
-
     switch(connectionParameters.role){
         case LlTx:
 
-            if(connectToReceiver(frame) < 0){
+            if(connectToReceiver() < 0){
                 printf("Timeout when sending the set frame\n");
                 return -1;
             }
@@ -769,7 +772,6 @@ int llopen(LinkLayer connectionParameters)
 
     }
     
-    free(frame);
     return 1;
 }
 
@@ -829,7 +831,9 @@ int llwrite(const unsigned char *buf, int bufSize)
 
             //if the frame received is rej, exit the loop and try again. Else, exit the function and increase the frame counter
             if(state_command == END){
+                alarm(0);
                 if(isRej){
+                    alarmCount = 0;
                     printf("Frame %d was sent with problems. Trying again\n", frame_numb);
                     break;
                 }
@@ -837,6 +841,8 @@ int llwrite(const unsigned char *buf, int bufSize)
                     printf("Frame %d sent successfully\n", frame_numb);
                     frame_numb++;
                     free(received_frame);
+
+                    number_rTransmissions += alarmCount;
                     return bytes;
                 }  
             }
@@ -851,6 +857,8 @@ int llwrite(const unsigned char *buf, int bufSize)
         alarm(0);//reset the alarm
         
     }
+    number_rTransmissions += alarmCount;
+    alarm(0);
     free(received_frame);
     return -1;
 }
@@ -889,12 +897,13 @@ int llread(unsigned char *packet)
             
             state_machine_data_frame(received_frame, &isRej, &isDisc);
 
-
-
             if(isRej){
+                
+                
                 printf("rej\n");
                 sendSupervisionFrame(&isRej);
                 isRej = false;
+                state_frame = START;
                 continue;
             }
 
@@ -903,27 +912,28 @@ int llread(unsigned char *packet)
                 isDisc = true;
                 printf("Receiving disc\n");
             }
+
+            
             
 
             //handles the special bytes using the byte stuffing mechanism
             if(isSpecial){
                 if(*received_frame == (FLAG ^ 0x20)){
+                    
                     packet[byte_count] = FLAG;
-                    bcc2_control ^= FLAG;
                 }
                 else{
+                   
                     packet[byte_count] = ESC;
-                    bcc2_control ^= ESC;
                 }
 
                 isSpecial = false;
                 byte_count++;
+                continue;
             }
 
             //checks if the byte received is data
-            if((state_frame == DATA)){
-
-                
+            if((state_frame == DATA)){               
 
                 //checks if the byte receivd is a special character from the byte stuffing mechanism
                 if(*received_frame == ESC){
@@ -932,13 +942,13 @@ int llread(unsigned char *packet)
                 else{
                     packet[byte_count] = *received_frame;
                     byte_count++;
-                    bcc2_control ^= *received_frame;
                 }
                 
             }
 
             //if the frame is successfully received, send the rr to confirm an return the number of chars read or a disc frame
             if(state_frame == END){
+
                 if(isDisc){
                     //sends the disc frame to the sender and receive an UA 
                     sendUnnumberedFrame(DISC, false);
@@ -948,13 +958,28 @@ int llread(unsigned char *packet)
                     return 0;
                     
                 }
-                else{
-                    printf("Frame %d received successfully\n", frame_numb);
-                    sendSupervisionFrame(&isRej);
-                    return byte_count + 1;
-                }
+
                 
 
+
+                for(int i = 0; i < byte_count; i++){
+                    bcc2_control ^= packet[i];
+                }
+
+                //before ending the reception verifies if the data was sent correctly
+                if(packet[byte_count - 1] != bcc2_control){
+                    isRej = true;
+                    state_command = START;
+                    continue;
+                }
+
+                isRej = false;
+                packet[byte_count] = '\0';
+                
+                printf("Frame %d received successfully\n", frame_numb);
+                sendSupervisionFrame(&isRej);
+                return byte_count + 1;
+                
         }  
         
     }
@@ -970,6 +995,7 @@ int llread(unsigned char *packet)
 int llclose(int showStatistics)
 {   
     if(role == LlTx){
+        
         if(terminate_connection() < 0){
             return -1;
         }

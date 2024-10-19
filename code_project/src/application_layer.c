@@ -8,14 +8,7 @@
 #include <string.h>
 #include <math.h>
 
-
-// Calculates log2 of number.  
-double log2( double n )  
-{  
-    // log(n)/log(2) is log2.  
-    return log( n ) / log( 2 );  
-}
-
+//Creates a control packet to send
 unsigned char * createControlPacket(int c, const char *filename, int file_size, int *packet_size){
 
     int numb_Bytes = (log2(file_size) / 8) + 1; //number of octets (bytes) used in V1
@@ -33,25 +26,31 @@ unsigned char * createControlPacket(int c, const char *filename, int file_size, 
     int packet_idx = 3;
 
     for(unsigned char i = 0; i < L1; i++){
-        packet[packet_idx++] = L1 & 0xFF;
+        packet[packet_idx++] = file_size & 0xFF;
+       
         file_size >>= 8;
     }
+
 
     packet[packet_idx++] = 1; //file name
     packet[packet_idx++] = L2;
     memcpy(&packet[packet_idx], filename, L2);
 
+    packet[*packet_size] = '\0';
+
     return packet;
 }
 
+//process a control packet by getting the need info from it
 void processControlPacket(unsigned char* packet,  char *filename, int *file_size, int packet_size){
 
     int L1 = packet[2];
 
     //reconstruct the file size
     for(unsigned char i = 0; i < L1; i++){
-        *file_size |= packet[2 + i];
+        *file_size |= packet[2 + L1 - i];   //inserts in reverse order
 
+        
         if(i == L1 - 1){
             break;
         }
@@ -62,6 +61,8 @@ void processControlPacket(unsigned char* packet,  char *filename, int *file_size
     //get the file name
     int L2 = packet[3 + L1 + 1];
     memcpy(filename, &packet[3 + L1 + 2], L2);
+
+    packet[packet_size] = '\0';
 }
 
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
@@ -88,8 +89,11 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             exit(-1);
         }
 
-        int file_size = (int) fseek(file, 0L, SEEK_END);
+        fseek(file, 0L, SEEK_END);
+        int file_size = (int) ftell(file);
+        printf("file size = %d\n", file_size);
         rewind(file);
+
 
         //create the Start packet
         int packet_size = 0;
@@ -116,7 +120,9 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             //process the packet read
             int file_size_RC = 0;
             char *name = (char*)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE);
-            processControlPacket(packet_RC, name, &file_size_RC, packet_size); 
+            processControlPacket(packet_RC, name, &file_size_RC, packet_size);
+
+            printf("file_size_RC = %d\n", file_size_RC); 
 
             //llread(packet_RC);//just to receive the disk
             free(packet_RC);

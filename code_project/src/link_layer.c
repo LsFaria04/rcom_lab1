@@ -974,7 +974,6 @@ int llread(unsigned char *packet)
                      bcc2_control ^= packet[byte_count - 1];
                 }
 
-                printf("bcc2_control = %x\n", packet[byte_count]);
                 //before ending the reception verifies if the data was sent correctly
                 if(packet[byte_count - 1] != bcc2_control){
                     isRej = true;

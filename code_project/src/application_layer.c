@@ -41,6 +41,7 @@ unsigned char * createControlPacket(int c, const char *filename, int file_size, 
     return packet;
 }
 
+//creates a data packet to send
 unsigned char * createDataPacket(int seq, unsigned char *data, int data_size, int *packet_size){
     *packet_size = 4 + data_size; //four first bytes plus the data bytes
 
@@ -50,8 +51,8 @@ unsigned char * createDataPacket(int seq, unsigned char *data, int data_size, in
     packet[1] = (unsigned int) seq % 100;
     
     // data_size = (256 * L2 + L1)
-    unsigned char L2 = (unsigned char) data_size / 256;
-    unsigned char L1 = (unsigned char) data_size % 256;
+    unsigned char L2 = data_size >> 8 & 0xFF;
+    unsigned char L1 = data_size & 0xFF;
     packet[2] = L2;
     packet[3] = L1;
 
@@ -63,6 +64,7 @@ unsigned char * createDataPacket(int seq, unsigned char *data, int data_size, in
     return packet;
 }
 
+//process a data packet by getting the needed info from it
 void processDataPacket(unsigned char *packet, int *seq, unsigned char *data, int *data_size){
     //sequence byte
     *seq = packet[1];
@@ -70,14 +72,16 @@ void processDataPacket(unsigned char *packet, int *seq, unsigned char *data, int
     //get the size of the data
     unsigned char L2 = packet[2];
     unsigned char L1 = packet[3];
-    *data_size = L2 * 256 + L1;
+    *data_size = (L2 << 8) | L1;
 
     //copy the data from the packet to the received data buffer
     memcpy(data, &packet[4], *data_size);
 
+    packet[*data_size + 4] = '\0';
+
 }
 
-//process a control packet by getting the need info from it
+//process a control packet by getting the needed info from it
 void processControlPacket(unsigned char* packet,  char *filename, int *file_size, int packet_size){
 
     int L1 = packet[2];
@@ -127,7 +131,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
         fseek(file, 0L, SEEK_END);
         int file_size = (int) ftell(file);
-        printf("file size = %d\n", file_size);
         rewind(file);
 
 
@@ -148,11 +151,10 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         unsigned char *content = (unsigned char*)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE);
         //send data packets (1000 bytes at time)
         while(bytes_left > 0){
-            int bytes_read = fread(content, 1 , MAX_PAYLOAD_SIZE - 4, file);
+            int bytes_read = fread(content, sizeof(unsigned char) , MAX_PAYLOAD_SIZE - 4, file);
 
             unsigned char *packet = createDataPacket(sequence, content, bytes_read, &packet_size);
 
-            printf("packet_size = %d\n", packet_size);
             if(llwrite(packet,packet_size) < 0){
                 printf("Error while writing a data packet\n");
                 exit(-1);
@@ -234,48 +236,26 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 else{
                     //data packet received. Write the data into the file
                     processDataPacket(packet_RC, &sequence_RC, content_received, &packet_size_RC);
-                    fwrite(content_received, 1, packet_size_RC, newFile);
+
+                    fwrite(content_received, sizeof(unsigned char), packet_size_RC, newFile);
                 }  
             }
 
             fclose(newFile);
 
+            if(llread(packet_RC) < 0){
+                 printf("Error while reading the end connection frames\n");
+                exit(-1);
+            }
+
             free(packet_RC);
             free(content_received);
+
 
         break;
         default:
             perror("Role does't exist\n");
             exit(-1);
-    }
-    
-    if(connectionParameters.role == LlTx){
-        unsigned char *buf = (unsigned char*)malloc(sizeof(unsigned char) * 5);
-
-        buf[0] = 0x7E;
-        buf[1]=  0X7E;
-        buf[2] = 0x7D;
-        buf[3]=  0x7D;
-        buf[4] = 0x7E;
-
-        llwrite(buf, 5);
-
-        
-        free(buf);
-    }
-
-    else{
-        unsigned char *packet = (unsigned char*)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE);
-        llread(packet);
-
-        for(int i = 0; i < 5; i++){
-            printf("char n%d = %x\n", i, packet[i]);
-        }
-
-
-        llread(packet);
-
-        free(packet);
     }
 
     llclose(TRUE); 

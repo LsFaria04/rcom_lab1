@@ -44,6 +44,7 @@ void alarmHandler(int signal)
     alarmEnabled = FALSE;
     alarmCount++;
     number_timeouts++;
+    number_rTransmissions++;
     printf("Alarm #%d\n", alarmCount);
 }
 
@@ -120,6 +121,8 @@ void state_machine_UA(unsigned char *received_buf, bool isSender){
 
 //state machine for receiving the unnumbered frames (rr and rej)
 void state_machine_RR_REJ(unsigned char *received_buf, bool *isRej){
+        unsigned char rrByte = C_RR0 + ((frame_numb + 1) % 2);
+        unsigned char rejByte = C_REJ + (frame_numb % 2);
         switch (state_command)
        {
 
@@ -145,9 +148,6 @@ void state_machine_RR_REJ(unsigned char *received_buf, bool *isRej){
             break;
 
         case A_RCV:
-
-            unsigned char rrByte = C_RR0 + ((frame_numb + 1) % 2);
-            unsigned char rejByte = C_RR0 + (frame_numb % 2);
 
             if(*received_buf == rrByte){
                 //reveived a rr byte
@@ -330,14 +330,13 @@ void state_machine_disc(unsigned char *byte, bool isSender){
 }
 
 //state machine to process the data frames (I Frames) but also a disc frame received after a data frame 
-void state_machine_data_frame(unsigned char *byte, bool *isRej, bool *isDisc){
+void state_machine_data_frame(unsigned char *byte, bool *isDisc,bool *connectionLost){
     switch(state_frame){
         case START:
             if(*byte == FLAG){
                 state_frame = FLAG_RCV;
             }
             else{
-                *isRej = true;
                 state_frame = START;
             }
             break;
@@ -367,7 +366,6 @@ void state_machine_data_frame(unsigned char *byte, bool *isRej, bool *isDisc){
                 state_frame=C_RCV;
             }
             else{
-                *isRej = true;
                 state_frame = START;
             }
             break;
@@ -385,7 +383,6 @@ void state_machine_data_frame(unsigned char *byte, bool *isRej, bool *isDisc){
                 }
             else
             {
-                *isRej = true;
                 state_frame = START;
             }
             break;
@@ -404,6 +401,11 @@ void state_machine_data_frame(unsigned char *byte, bool *isRej, bool *isDisc){
             break;
 
         case DATA:
+            //if the connection was previously lost, any flag received is part of a new frame
+            if(*connectionLost && (*byte == FLAG)){
+                state_frame = FLAG_RCV;
+                break;
+            }
             if(*byte == FLAG){
                 state_frame = END;
             }
@@ -832,6 +834,9 @@ int llwrite(const unsigned char *buf, int bufSize)
                 alarm(0);
                 if(isRej){
                     alarmCount = 0;
+                    alarmEnabled = FALSE;
+                    state_command = START;
+                    number_rTransmissions++;
                     printf("Frame %d was sent with problems. Trying again\n", frame_numb);
                     break;
                 }
@@ -839,8 +844,6 @@ int llwrite(const unsigned char *buf, int bufSize)
                     printf("Frame %d sent successfully\n", frame_numb);
                     frame_numb++;
                     free(received_frame);
-
-                    number_rTransmissions += alarmCount;
                     return bytes;
                 }  
             }
@@ -855,7 +858,6 @@ int llwrite(const unsigned char *buf, int bufSize)
         alarm(0);//reset the alarm
         
     }
-    number_rTransmissions += alarmCount;
     alarm(0);
     free(received_frame);
     return -1;
@@ -867,46 +869,60 @@ int llwrite(const unsigned char *buf, int bufSize)
 int llread(unsigned char *packet)
 {
     int byte_count = 0;
-    //allocate space for the received frame buffer
-    unsigned char *received_frame = (unsigned char*)malloc(sizeof(unsigned char));
+    //allocate space for the received frame buffer (allocate an extra space for the bcc)
+    unsigned char *received_frame = (unsigned char*)malloc(sizeof(unsigned char) + 1);
 
     bool isRej = false;
     bool isSpecial = false;
     bool isDisc = false;
+    bool connectionLost=false;
     int byte = 0;
     state_frame = START;
 
     //only exits after completing the data receiving
     while(true){
+       
+
+            //The frame was previously rejected so we need 
+            if(isRej){
+                printf("rej\n");
+                sendSupervisionFrame(&isRej);
+                isRej = false;
+                state_frame = START;
+                byte_count = 0;
+                continue;
+            }
             
             byte = readByteSerialPort(received_frame);
-            
 
+        
             if(byte < 0){
                 printf("something went wrong when reading the data bytes\n");
                 break;
             }
 
-            //didn't receive any new byte
+            //didn't receive any new byte. This may indicate that the connection was lost
             if(byte == 0){
                 printf("no byte\n");
-                continue;
-            }
-      
-            state_machine_data_frame(received_frame, &isRej, &isDisc);
-
-            if(isRej){
-                
-                
-                printf("rej\n");
-                sendSupervisionFrame(&isRej);
-                isRej = false;
-                state_frame = START;
+                printf("Probably data connection is lost\n");
+                connectionLost = true;
                 continue;
             }
 
+            //only used for debugging. Indicates if an overflow is in risk of happenning
+            if(byte_count > MAX_PAYLOAD_SIZE + 1){
+                printf("Byte_count = %d\n", byte_count);
+                printf("Warning, risk of overflow, byte_count reseted\n");
+                byte_count = 0;
+            }
+
+            state_machine_data_frame(received_frame, &isDisc,&connectionLost);
+            
+            connectionLost=false;
+
+            
+            //verifies if the the frame is a Disc and activates a flag in order to change the state machine behaviour
             if(state_frame == A_RCV && *received_frame == C_DISC){
-
                 isDisc = true;
                 printf("Receiving disc\n");
             }
@@ -986,6 +1002,7 @@ int llread(unsigned char *packet)
                 packet[byte_count - 1] = '\0';
                 
                 printf("Frame %d received successfully\n", frame_numb);
+
                 sendSupervisionFrame(&isRej);
                 frame_numb++;
                 return byte_count + 1;
@@ -1009,8 +1026,14 @@ int llclose(int showStatistics)
             return -1;
         }
     }
+    else{
+        //if is receiver, call the llread to receive a disc and send a disc to the transmitter
+        unsigned char *packet = (unsigned char*)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE);
+        llread(packet);
+        free(packet);
+    }
 
-    if(showStatistics){
+    if(showStatistics && (role == LlTx)){
         printf("Number of timeouts = %d\n", number_timeouts);
         printf("Number of retransmissions = %d\n", number_rTransmissions);
     }

@@ -102,6 +102,8 @@ void processControlPacket(unsigned char* packet,  char *filename, int *file_size
     int L2 = packet[3 + L1 + 1];
     memcpy(filename, &packet[3 + L1 + 2], L2);
 
+    filename[L2] = '\0';
+
     packet[packet_size] = '\0';
 }
 
@@ -120,10 +122,21 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         exit(-1);
     }
 
+    //some variables used in the switch
+    FILE *file;
+    FILE* newFile;
+    unsigned char *packet_RC;
+    char *fname;
+    char *name_end;
+    unsigned char *content_received;
+    unsigned char *controlPacket;
+    unsigned char *content;
+    unsigned char *packet;
+
     switch(connectionParameters.role){
         case LlTx:
 
-        FILE *file = fopen(filename, "r");
+        file = fopen(filename, "r");
         if(file == NULL){
             perror("The file doesn't exist\n");
             exit(-1);
@@ -136,7 +149,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
         //create the Start packet
         int packet_size = 0;
-        unsigned char *controlPacket = createControlPacket(1, filename, file_size, &packet_size);
+        controlPacket = createControlPacket(1, filename, file_size, &packet_size);
 
         //send the start packet
         if(llwrite(controlPacket, packet_size) < 0){
@@ -148,12 +161,12 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
         int bytes_left = file_size;
         int sequence = 0;
-        unsigned char *content = (unsigned char*)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE);
+        content = (unsigned char*)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE);
         //send data packets (1000 bytes at time)
         while(bytes_left > 0){
             int bytes_read = fread(content, sizeof(unsigned char) , MAX_PAYLOAD_SIZE - 4, file);
 
-            unsigned char *packet = createDataPacket(sequence, content, bytes_read, &packet_size);
+            packet = createDataPacket(sequence, content, bytes_read, &packet_size);
 
             if(llwrite(packet,packet_size) < 0){
                 printf("Error while writing a data packet\n");
@@ -182,7 +195,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
         case LlRx:
             //create the packet
-            unsigned char *packet_RC = (unsigned char *)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE);
+            packet_RC = (unsigned char *)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE);
 
             //read the start packet from the serial port
             int packet_size_RC = -1;
@@ -198,13 +211,16 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
             //process the start packet
             int file_size_RC = 0;
-            char *name = (char*)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE);
-            processControlPacket(packet_RC, name, &file_size_RC, packet_size);
+            fname = (char*)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE);
+            if(fname == NULL){
+                printf("problem with allocation\n");
+            }
+            processControlPacket(packet_RC, fname, &file_size_RC, packet_size);
 
             //read the data
             int sequence_RC = 0;
-            FILE* newFile = fopen(filename, "w+");
-            unsigned char *content_received = (unsigned char*)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE);
+            newFile = fopen(filename, "w+");
+            content_received = (unsigned char*)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE);
             while(TRUE){
                 while((packet_size_RC = llread(packet_RC)) < 0);
                 if(packet_size_RC < 0){
@@ -214,12 +230,12 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
                 //checks if the packet received is a end control packet
                 if(packet_RC[0] == 3){
-                    char *name_end = (char*)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE);
+                    name_end = (char*)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE);
                     int file_size_RC_end = 0;
                     processControlPacket(packet_RC, name_end,&file_size_RC_end, packet_size_RC);
 
-                    if(strcmp(name, name_end) != 0){
-                        printf("Name of the fil in the start packet is different from the one in the end packet\n");
+                    if(strcmp(fname, name_end) != 0){
+                        printf("Name of the file in the start packet is different from the one in the end packet\n");
                         exit(-1);
                     }
 
@@ -229,6 +245,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                     }
 
                     free(name_end);
+                    free(fname);
 
                     break;
                 
@@ -242,12 +259,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             }
 
             fclose(newFile);
-
-            if(llread(packet_RC) < 0){
-                 printf("Error while reading the end connection frames\n");
-                exit(-1);
-            }
-
             free(packet_RC);
             free(content_received);
 

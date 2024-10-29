@@ -142,6 +142,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             exit(-1);
         }
 
+
+        //get the file size
         fseek(file, 0L, SEEK_END);
         int file_size = (int) ftell(file);
         rewind(file);

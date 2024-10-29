@@ -27,38 +27,6 @@ typedef struct
 #define FALSE 0
 #define TRUE 1
 
-//Values used in the frames
-#define FLAG 0x7E
-#define A_SENDER 0X03
-#define A_RECEIVER 0X01
-#define C_SET 0X03
-#define C_UA 0X7
-#define C_RR0 0xAA
-#define C_REJ 0x54
-#define C_DISC 0x0B
-#define ESC 0x7d
-#define N(s) ((s % 2) << 6)
-
-//states
-typedef enum {
-    START,
-    FLAG_RCV,
-    A_RCV,
-    C_RCV,
-    BCC1_OK,
-    DATA,
-    BCC2_OK,
-    END
-} state;
-
-//command
-typedef enum {
-    UA,
-    DISC,
-    SET
-} command;
-
-
 // Open a connection using the "port" parameters defined in struct linkLayer.
 // Return "1" on success or "-1" on error.
 int llopen(LinkLayer connectionParameters);

@@ -14,6 +14,40 @@
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
 
+
+//Values used in the frames
+#define FLAG 0x7E
+#define A_SENDER 0X03
+#define A_RECEIVER 0X01
+#define C_SET 0X03
+#define C_UA 0X7
+#define C_RR0 0xAA
+#define C_REJ 0x54
+#define C_DISC 0x0B
+#define ESC 0x7d
+#define N(s) ((s % 2) << 6)
+
+//states
+typedef enum {
+    START,
+    FLAG_RCV,
+    A_RCV,
+    C_RCV,
+    BCC1_OK,
+    DATA,
+    BCC2_OK,
+    END
+} state;
+
+//command
+typedef enum {
+    UA,
+    DISC,
+    SET
+} command;
+
+
+
 //alarm help variables
 static int alarmEnabled = FALSE;
 static int alarmCount = 0;
@@ -432,11 +466,13 @@ int createDataFrame(unsigned char *frame, const unsigned char *buf, int bufSize)
     for(int i = 0; i < bufSize; i++){
         
         if(buf[i] == FLAG){
+            //byte stuffing
             frame[frame_index] = ESC;
             frame[frame_index + 1] = FLAG ^ 0x20;
             frame_index = frame_index + 2;
         }
         else if(buf[i] == ESC){
+            //byte stuffing
             frame[frame_index] = ESC;
             frame[frame_index + 1] = ESC ^ 0x20;
             frame_index = frame_index + 2;
@@ -510,7 +546,7 @@ int sendUnnumberedFrame(command cmd, bool isSender){
     //creates the frame to send
     createUnnumberedFrame(frame, cmd, isSender);
    
-    //sends the command 
+    //sends the frame
     int bytes = writeBytesSerialPort(frame, 5);
     printf("%d bytes have been written\n",bytes);
     
@@ -636,7 +672,7 @@ int connectToReceiver(){
     {
         if (alarmEnabled == FALSE)
         {
-            alarm(timeout); // Set alarm to be triggered in 3s
+            alarm(timeout); // Set alarm to be triggered in timout seconds
             alarmEnabled = TRUE;
             
             sendUnnumberedFrame(SET, true);
@@ -695,12 +731,12 @@ int terminate_connection(){
 
 
 
-    //waits timeout time for the UA message. Tries n times to send the message
+    //waits timeout time for the disc message. Tries n times to send the message
     while (alarmCount < nRetransmissions)
     {
         if (alarmEnabled == FALSE)
         {
-            alarm(timeout); // Set alarm to be triggered in 3s
+            alarm(timeout); // Set alarm to be triggered in timeout seconds
             alarmEnabled = TRUE;
             
             if(sendUnnumberedFrame(DISC, true) != 0){
@@ -806,12 +842,12 @@ int llwrite(const unsigned char *buf, int bufSize)
     //only exits after completing the data sending
     while(true){
 
-        //waits 3s for the UA message. Tries 3 times to send the message
+        //waits timout time for the supervision frame message. Tries n times to send the message
         while (alarmCount < nRetransmissions)
         {
             if (alarmEnabled == FALSE)
             {
-                alarm(timeout); // Set alarm to be triggered in 3s
+                alarm(timeout); // Set alarm to be triggered in timeout seconds
                 alarmEnabled = TRUE;
                 
 
@@ -883,7 +919,7 @@ int llread(unsigned char *packet)
     while(true){
        
 
-            //The frame was previously rejected so we need 
+            //The frame was previously rejected so we need to send a supervision frame to warn the transmitter 
             if(isRej){
                 printf("rej\n");
                 sendSupervisionFrame(&isRej);
@@ -903,7 +939,7 @@ int llread(unsigned char *packet)
 
             //didn't receive any new byte. This may indicate that the connection was lost
             if(byte == 0){
-                printf("no byte\n");
+                printf("No byte\n");
                 printf("Probably data connection is lost\n");
                 connectionLost = true;
                 continue;
@@ -1034,6 +1070,7 @@ int llclose(int showStatistics)
     }
 
     if(showStatistics && (role == LlTx)){
+        //statistics shown by the transmitter indicating the number of timeouts and retransmissions
         printf("Number of timeouts = %d\n", number_timeouts);
         printf("Number of retransmissions = %d\n", number_rTransmissions);
     }

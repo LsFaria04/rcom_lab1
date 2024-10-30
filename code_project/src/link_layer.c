@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <stdbool.h>
+#include <time.h>
 
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
@@ -71,6 +72,9 @@ static LinkLayerRole role; //used to check the role in the connection
 //used for the statistics
 static int number_timeouts = 0;
 static int number_rTransmissions = 0;
+static int number_rej = 0;
+static time_t begin_time;
+static time_t end_time;
 
 // Alarm function handler
 void alarmHandler(int signal)
@@ -776,6 +780,8 @@ int terminate_connection(){
 ////////////////////////////////////////////////
 int llopen(LinkLayer connectionParameters)
 {
+    begin_time = time(NULL);
+
     int fd = openSerialPort(connectionParameters.serialPort,connectionParameters.baudRate);
     if (fd < 0)
     {
@@ -923,6 +929,7 @@ int llread(unsigned char *packet)
             if(isRej){
                 printf("rej\n");
                 sendSupervisionFrame(&isRej);
+                number_rej++;
                 isRej = false;
                 state_frame = START;
                 byte_count = 0;
@@ -1057,6 +1064,10 @@ int llread(unsigned char *packet)
 ////////////////////////////////////////////////
 int llclose(int showStatistics)
 {   
+    //calculate the time spent running the program 
+    end_time = time(NULL);
+    double time_spent = (double)(end_time - begin_time);
+
     if(role == LlTx){
         if(terminate_connection() < 0){
             return -1;
@@ -1069,10 +1080,20 @@ int llclose(int showStatistics)
         free(packet);
     }
 
-    if(showStatistics && (role == LlTx)){
-        //statistics shown by the transmitter indicating the number of timeouts and retransmissions
-        printf("Number of timeouts = %d\n", number_timeouts);
-        printf("Number of retransmissions = %d\n", number_rTransmissions);
+    if(showStatistics){
+        printf("\n\n");
+        printf("STATISTICS\n\n");
+        printf("Execution time = %fs\n", time_spent);
+
+        if(role == LlTx){
+            printf("Number of timeouts = %d\n", number_timeouts);
+            printf("Number of retransmissions = %d\n", number_rTransmissions);
+            printf("Data frames sent successfully = %d\n", frame_numb - 1);
+        }
+        else{
+            printf("Frames rejected = %d\n", number_rej);
+            printf("Data frames received successfully = %d\n", frame_numb - 1);
+        }
     }
 
     int clstat = closeSerialPort();

@@ -952,11 +952,13 @@ int llread(unsigned char *packet)
                 continue;
             }
 
-            //only used for debugging. Indicates if an overflow is in risk of happenning
+            //Indicates if an overflow is in risk of happenning. May indicate that the flag was corrupted and the read continued
             if(byte_count > MAX_PAYLOAD_SIZE + 1){
                 printf("Byte_count = %d\n", byte_count);
                 printf("Warning, risk of overflow, byte_count reseted\n");
                 byte_count = 0;
+                isRej = true;
+                continue;
             }
 
             state_machine_data_frame(received_frame, &isDisc,&connectionLost);

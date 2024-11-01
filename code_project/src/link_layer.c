@@ -368,7 +368,7 @@ void state_machine_disc(unsigned char *byte, bool isSender){
 }
 
 //state machine to process the data frames (I Frames) but also a disc frame received after a data frame 
-void state_machine_data_frame(unsigned char *byte, bool *isDisc,bool *connectionLost){
+void state_machine_data_frame(unsigned char *byte, bool *isDisc,bool *connectionLost, bool *isDuplicated){
     switch(state_frame){
         case START:
             if(*byte == FLAG){
@@ -394,6 +394,12 @@ void state_machine_data_frame(unsigned char *byte, bool *isDisc,bool *connection
         case A_RCV:
             if(*byte == N(frame_numb)){
                 state_frame = C_RCV;
+                break;
+            }
+            if(*byte == N(frame_numb - 1)){
+                printf("here\n");
+                *isDuplicated = true;
+                break;
             }
             else if(*byte == FLAG){
                 state_frame = FLAG_RCV;
@@ -918,6 +924,7 @@ int llread(unsigned char *packet)
     bool isSpecial = false;
     bool isDisc = false;
     bool connectionLost=false;
+    bool isDuplicated = false;
     int byte = 0;
     state_frame = START;
 
@@ -961,7 +968,17 @@ int llread(unsigned char *packet)
                 continue;
             }
 
-            state_machine_data_frame(received_frame, &isDisc,&connectionLost);
+            state_machine_data_frame(received_frame, &isDisc,&connectionLost, &isDuplicated);
+
+            
+            if(isDuplicated){
+                printf("is duplicated\n");
+                frame_numb--;
+                if(sendSupervisionFrame(&isRej) < 0){
+                    break;
+                }
+                frame_numb++;
+            }
             
             connectionLost=false;
 

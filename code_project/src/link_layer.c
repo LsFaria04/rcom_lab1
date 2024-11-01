@@ -911,7 +911,7 @@ int llwrite(const unsigned char *buf, int bufSize)
 int llread(unsigned char *packet)
 {
     int byte_count = 0;
-    //allocate space for the received frame buffer (allocate an extra space for the bcc)
+    //allocate space for the received frame buffer
     unsigned char *received_frame = (unsigned char*)malloc(sizeof(unsigned char) + 1);
 
     bool isRej = false;
@@ -1031,6 +1031,7 @@ int llread(unsigned char *packet)
                 //special case when the bcc2 has the same value as the flag wich makes the state machine exit earlier than expected 
                 if(packet[byte_count - 1] == FLAG){
                      bcc2_control ^= packet[byte_count - 1];
+                     state_command = DATA;
                 }
 
                 //before ending the reception verifies if the data was sent correctly

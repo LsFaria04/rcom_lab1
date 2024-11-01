@@ -37,6 +37,7 @@ unsigned char * createControlPacket(int c, const char *filename, int file_size, 
     memcpy(&packet[packet_idx], filename, L2);
 
     packet[*packet_size] = '\0';
+    *packet_size += 1;
 
     return packet;
 }
@@ -60,6 +61,7 @@ unsigned char * createDataPacket(int seq, unsigned char *data, int data_size, in
     memcpy(&packet[4], data, data_size );
 
     packet[*packet_size] = '\0';
+    *packet_size += 1;
 
     return packet;
 }
@@ -166,7 +168,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         content = (unsigned char*)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE);
         //send data packets (1000 bytes at time)
         while(bytes_left > 0){
-            int bytes_read = fread(content, sizeof(unsigned char) , MAX_PAYLOAD_SIZE - 4, file);
+            int bytes_read = fread(content, sizeof(unsigned char) , MAX_PAYLOAD_SIZE - 5, file);
 
             packet = createDataPacket(sequence, content, bytes_read, &packet_size);
 
@@ -222,7 +224,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             //read the data
             int sequence_RC = 0;
             newFile = fopen(filename, "w+");
-            content_received = (unsigned char*)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE);
+            content_received = (unsigned char*)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE + 2);
             while(TRUE){
                 while((packet_size_RC = llread(packet_RC)) < 0);
                 if(packet_size_RC < 0){

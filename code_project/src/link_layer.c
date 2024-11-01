@@ -397,7 +397,7 @@ void state_machine_data_frame(unsigned char *byte, bool *isDisc,bool *connection
                 break;
             }
             if(*byte == N(frame_numb - 1)){
-                printf("here\n");
+                //received a duplicated frame, don't need to continue
                 *isDuplicated = true;
                 break;
             }
@@ -565,10 +565,12 @@ int sendUnnumberedFrame(command cmd, bool isSender){
     
 
     if(bytes < 0){
+        free(frame);
         printf("failed do send\n");
         return -1;
     }
 
+    free(frame);
     return 0;
 }
 
@@ -585,6 +587,7 @@ int sendSupervisionFrame(bool *isRej){
     sleep(1);
 
     if(bytes < 0){
+        free(frame);
         return -1;
     }
     free(frame);
@@ -892,6 +895,7 @@ int llwrite(const unsigned char *buf, int bufSize)
                     printf("Frame %d sent successfully\n", frame_numb);
                     frame_numb++;
                     free(received_frame);
+                    free(frame);
                     return bytes;
                 }  
             }
@@ -907,6 +911,7 @@ int llwrite(const unsigned char *buf, int bufSize)
         
     }
     alarm(0);
+    free(frame);
     free(received_frame);
     return -1;
 }
@@ -970,14 +975,15 @@ int llread(unsigned char *packet)
 
             state_machine_data_frame(received_frame, &isDisc,&connectionLost, &isDuplicated);
 
-            
+            //received a duplicated frame. Send a rr to confirm the reception
             if(isDuplicated){
-                printf("is duplicated\n");
+                printf("Is Duplicated\n");
                 frame_numb--;
                 if(sendSupervisionFrame(&isRej) < 0){
                     break;
                 }
                 frame_numb++;
+                continue;
             }
             
             connectionLost=false;
@@ -1068,6 +1074,7 @@ int llread(unsigned char *packet)
 
                 sendSupervisionFrame(&isRej);
                 frame_numb++;
+                free(received_frame);
                 return byte_count + 1;
                 
         }  

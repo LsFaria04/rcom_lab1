@@ -199,7 +199,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
         case LlRx:
             //create the packet
-            packet_RC = (unsigned char *)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE);
+            packet_RC = (unsigned char *)malloc(sizeof(unsigned char) * MAX_PAYLOAD_SIZE + 1);
 
             //read the start packet from the serial port
             int packet_size_RC = -1;

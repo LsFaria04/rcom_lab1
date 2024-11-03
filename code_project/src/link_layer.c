@@ -979,6 +979,7 @@ int llread(unsigned char *packet)
             if(isDuplicated){
                 printf("Is Duplicated\n");
                 frame_numb--;
+                isRej = false;
                 if(sendSupervisionFrame(&isRej) < 0){
                     break;
                 }
